@@ -1,0 +1,47 @@
+name: Build Enterprise G ISO
+
+on:
+  workflow_dispatch:
+    inputs:
+      uup_id:
+        description: 'UUP dump ID (from uupdump.net)'
+        required: true
+      edition:
+        description: 'Edition to download (e.g. Professional)'
+        required: true
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Download UUP dump script
+        run: |
+          Invoke-WebRequest -Uri "https://uupdump.net/get.php?id=${{ github.event.inputs.uup_id }}&pack=1" -OutFile uup_download_windows.cmd
+
+      - name: Download UUP files (no updates)
+        run: |
+          .\uup_download_windows.cmd --autodownload --language en-us --edition ${{ github.event.inputs.edition }} --disableupdates
+
+      - name: Write ConvertConfig.ini
+        run: |
+          Set-Content -Path ConvertConfig.ini -Value "AutoStart=1`r`nAddUpdates=0`r`nSkipApps=1`r`nAppsLevel=1"
+
+      - name: Convert UUP to ISO/WIM
+        run: .\convert-UUP.cmd
+
+      - name: Convert WIM to EnterpriseG and apply customizations
+        run: |
+          .\enterprise_g_automation\convert_to_enterpriseG.cmd ISOFOLDER\sources\install.wim
+
+      - name: Create final ISO with oscdimg
+        run: |
+          oscdimg -bISOFOLDER\boot\etfsboot.com -u2 -h -m ISOFOLDER C:\EnterpriseG.iso
+
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: EnterpriseG-ISO
+          path: C:\EnterpriseG.iso
